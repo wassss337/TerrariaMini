@@ -1,0 +1,14 @@
+{
+  "treeDensity": 0.09,
+  "oreDensity": 1.0,
+  "caveCount": 18,
+  "villageCount": 2,
+  "mineCount": 2,
+  "templeCount": 1,
+  "ruinCount": 2,
+  "mountainCount": 3,
+  "riverCount": 2,
+  "allowSnow": true,
+  "allowDesert": true,
+  "allowMountains": true
+}
