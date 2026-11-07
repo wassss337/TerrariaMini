@@ -3,7 +3,7 @@
 > ⛏️ A mini Terraria-like sandbox game in Java — with mods, datapacks, LAN multiplayer, and a full world to explore.
 
 ![Status](https://img.shields.io/badge/status-beta-orange)
-![Version](https://img.shields.io/badge/version-1.2.3-blue)
+![Version](https://img.shields.io/badge/version-1.3-blue)
 ![Java](https://img.shields.io/badge/java-25%2B-red)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
