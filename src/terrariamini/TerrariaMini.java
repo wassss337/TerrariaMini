@@ -75,18 +75,17 @@ public class TerrariaMini extends JPanel implements ActionListener, KeyListener,
     public GameState getState() { return state; }
     private File currentWorldDir = null;  
     private static final String[] CHANGELOG = {
-        "TerrariaMini beta 1.3",
+        "TerrariaMini beta 1.3.1",
         "",
-        "+ Новые команды: /data /scoreboard /bossbar /summon /effect /func /slotreplace /opengui",
-        "+ Автодополнение команд (TAB в чате)",
-        "+ NBT для предметов и игроков",
-        "+ Данжи и 3 вида деревень",
-        "+ Медь, изумруды, палки, часы, броня, печки, бочки, котлы",
-        "+ Корова, свинья, курица",
-        "+ Озёра и вода",
-        "+ Кастомизация персонажа",
-        "+ Список серверов",
-        "+ Красивые звуки, GUI и анимации",
+        "+ F11 работает из любого состояния (глобальный перехватчик)",
+        "+ Картинка масштабируется под окно (nearest-neighbor, letterbox)",
+        "+ Координаты мыши конвертируются под масштаб",
+        "+ Исправлен краш экрана «Персонаж» (player == null)",
+        "+ Цвета персонажа хранятся в главном объекте игры",
+        "+ Исправлен IndexOutOfBoundsException в World.tick()",
+        "+ markActive игнорирует координаты вне мира",
+        "+ Мягкие звуки: ADSR, low-pass, soft-clipping",
+        "+ Громкость музыки снижена",
         "",
         "Спасибо за игру!"
     };
@@ -165,20 +164,57 @@ public class TerrariaMini extends JPanel implements ActionListener, KeyListener,
     private boolean creativePaletteOpen = false;
     private int creativePaletteScroll = 0;
     private static final int[] CREATIVE_BLOCKS = {
+        // Базовые блоки
         World.DIRT, World.STONE, World.GRASS, World.SAND, World.WOOD, World.LEAVES,
-        World.COAL, World.IRON, World.GOLD, World.DIAMOND, World.SNOW, World.ICE,
-        World.PLANK, World.TORCH, World.GLASS, World.LANTERN, World.LADDER, World.BED,
-        World.SIGN, World.BOOKSHELF, World.CHEST, World.FURNACE, World.WORKBENCH,
-        World.DOOR_CLOSED, World.BG_STONE, World.BG_DIRT, World.BG_WOOD, World.BG_PLANK,
-        World.SWORD_WOOD, World.SWORD_STONE, World.SWORD_IRON, World.SWORD_DIAMOND,
-        World.PICK_WOOD, World.PICK_STONE, World.PICK_IRON, World.PICK_DIAMOND,
-        World.AXE_WOOD, World.AXE_STONE, World.AXE_IRON, World.AXE_DIAMOND,
-        World.IRON_INGOT, World.GOLD_INGOT, World.DIAMOND_GEM, World.COAL_ITEM,
-        World.COIN_GOLD
+        World.SNOW, World.ICE, World.SANDSTONE, World.SNOW_PLANK, World.PLANK,
+        // Руды
+        World.COAL, World.IRON, World.GOLD, World.DIAMOND, World.COPPER_ORE, World.EMERALD,
+        // Слитки и гемы
+        World.IRON_INGOT, World.GOLD_INGOT, World.COPPER_INGOT, World.DIAMOND_GEM,
+        World.EMERALD_GEM, World.COAL_ITEM, World.COIN_GOLD,
+        // Декор
+        World.TORCH, World.LANTERN, World.GLASS, World.LADDER, World.BED, World.SIGN,
+        World.BOOKSHELF, World.BARREL, World.CAULDRON,
+        // Контейнеры и станки
+        World.CHEST, World.FURNACE, World.STONE_FURNACE, World.WORKBENCH, World.CRAFT_TABLE,
+        World.BREWING_STAND,
+        // Двери и стены
+        World.DOOR_CLOSED, World.DOOR_OPEN,
+        World.BG_STONE, World.BG_DIRT, World.BG_WOOD, World.BG_PLANK,
+        // Инструменты
+        World.SWORD_WOOD, World.SWORD_STONE, World.SWORD_IRON, World.SWORD_DIAMOND, World.SWORD_COPPER,
+        World.PICK_WOOD, World.PICK_STONE, World.PICK_IRON, World.PICK_DIAMOND, World.PICK_COPPER,
+        World.AXE_WOOD, World.AXE_STONE, World.AXE_IRON, World.AXE_DIAMOND, World.AXE_COPPER,
+        // Разное
+        World.STICK, World.CLOCK, World.FLASK,
+        // Вёдра
+        World.BUCKET_EMPTY, World.BUCKET_WATER, World.BUCKET_LAVA,
+        // Еда
+        World.WHEAT_ITEM, World.BREAD, World.APPLE, World.GOLDEN_APPLE, World.CARROT,
+        World.MEAT_RAW, World.MEAT_COOKED, World.MUSHROOM, World.MUSHROOM_SOUP, World.WOOL_ITEM,
+        // Зелья
+        World.POTION_HEAL, World.POTION_STRENGTH, World.POTION_SPEED, World.POTION_NIGHT,
+        World.POTION_REGEN, World.POTION_FIRE,
+        // Броня
+        World.LEATHER_HELMET, World.LEATHER_CHEST, World.LEATHER_LEGS, World.LEATHER_BOOTS,
+        World.COPPER_HELMET, World.COPPER_CHEST, World.COPPER_LEGS, World.COPPER_BOOTS,
+        World.IRON_HELMET, World.IRON_CHEST, World.IRON_LEGS, World.IRON_BOOTS,
+        World.GOLD_HELMET, World.GOLD_CHEST, World.GOLD_LEGS, World.GOLD_BOOTS,
+        World.DIAMOND_HELMET, World.DIAMOND_CHEST, World.DIAMOND_LEGS, World.DIAMOND_BOOTS,
+        // Ад
+        World.HELLSTONE, World.ASH, World.OBSIDIAN, World.DEMONITE
     };
     private final java.util.Set<Integer> defeatedBosses = new java.util.HashSet<>();
     private float panelFade = 0f;
     private long lastAnimTime = System.currentTimeMillis();
+    private BufferedImage screenBuffer;
+    // цвет и причёска — работают и в меню, и в игре
+    private Color charSkinColor  = new Color(240, 200, 160);
+    private Color charShirtColor = new Color(80, 110, 200);
+    private Color charPantsColor = new Color(50, 30, 20);
+    private Color charHairColor  = new Color(80, 50, 30);
+    private int   charHairStyle  = 0;
+    private int   charArmorHelmet = 0, charArmorChest = 0, charArmorLegs = 0, charArmorBoots = 0;
 
     public TerrariaMini(JFrame frame) {
         this.frame = frame;
@@ -200,6 +236,19 @@ public class TerrariaMini extends JPanel implements ActionListener, KeyListener,
         ModManager.loadAll(ctx);
         timer = new javax.swing.Timer(16, this);
         timer.start();
+        SwingUtilities.invokeLater(() -> {
+            frame.setVisible(true);
+            requestFocusInWindow();
+            frame.toFront();
+        });
+        // Глобальный перехват F11 — работает даже если фокус потерян
+        KeyboardFocusManager.getCurrentKeyboardFocusManager().addKeyEventDispatcher(e -> {
+            if (e.getID() == KeyEvent.KEY_PRESSED && e.getKeyCode() == KeyEvent.VK_F11) {
+                toggleFullscreen();
+                return true; // съедаем событие
+            }
+            return false;
+        });
     }
     private static String biomeName(int b) {
         switch (b) {
@@ -634,10 +683,16 @@ public class TerrariaMini extends JPanel implements ActionListener, KeyListener,
     @Override
     protected void paintComponent(Graphics g) {
         super.paintComponent(g);
-        Graphics2D g2 = (Graphics2D) g;
+
+        // off-screen буфер фиксированного размера (как раньше)
+        if (screenBuffer == null) {
+            screenBuffer = new BufferedImage(SCREEN_W, SCREEN_H, BufferedImage.TYPE_INT_ARGB);
+        }
+        Graphics2D g2 = screenBuffer.createGraphics();
         g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_OFF);
         g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_OFF);
         g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
+
         switch (state) {
             case MENU: drawMenu(g2); break;
             case WORLD_SELECT: drawWorldSelect(g2); break;
@@ -652,6 +707,25 @@ public class TerrariaMini extends JPanel implements ActionListener, KeyListener,
             case CHANGELOG: drawChangelog(g2); break;
             case CHARACTER: drawCharacter(g2); break;
         }
+        g2.dispose();
+
+        // масштабируем буфер на реальный размер панели, сохраняя пропорции (letterbox)
+        int panelW = getWidth();
+        int panelH = getHeight();
+        if (panelW <= 0 || panelH <= 0) return;
+
+        double scale = Math.min(panelW / (double) SCREEN_W, panelH / (double) SCREEN_H);
+        int drawW = (int) (SCREEN_W * scale);
+        int drawH = (int) (SCREEN_H * scale);
+        int drawX = (panelW - drawW) / 2;
+        int drawY = (panelH - drawH) / 2;
+
+        Graphics2D gOut = (Graphics2D) g;
+        gOut.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
+        // чёрные полосы по краям
+        gOut.setColor(Color.BLACK);
+        gOut.fillRect(0, 0, panelW, panelH);
+        gOut.drawImage(screenBuffer, drawX, drawY, drawW, drawH, null);
     }
 
 
@@ -662,34 +736,33 @@ public class TerrariaMini extends JPanel implements ActionListener, KeyListener,
 
         // превью
         int px = SCREEN_W / 2 - 40, py = 130;
-        int W = Player.W, H = Player.H;
+        int W = 24, H = 34;
         g.setColor(new Color(0, 0, 0, 80)); g.fillRect(px + 2, py + H - 3, W - 4, 3);
-        g.setColor(player.pantsColor);
+        g.setColor(charPantsColor);
         g.fillRect(px + 5, py + H - 10, 5, 10);
         g.fillRect(px + W - 10, py + H - 10, 5, 10);
-        g.setColor(player.shirtColor);
+        g.setColor(charShirtColor);
         g.fillRect(px + 3, py + 14, W - 6, H - 22);
-        // броня поверх
-        if (player.armorChest != 0) {
-            g.setColor(armorColor(player.armorChest));
+        if (charArmorChest != 0) {
+            g.setColor(armorColor(charArmorChest));
             g.fillRect(px + 3, py + 14, W - 6, H - 22);
         }
-        g.setColor(player.skinColor);
+        g.setColor(charSkinColor);
         g.fillRect(px - 1, py + 16, 4, 12);
         g.fillRect(px + W - 3, py + 16, 4, 12);
         g.fillRect(px + 3, py, W - 6, 14);
-        g.setColor(player.hairColor);
-        if (player.hairStyle == 0) {
+        g.setColor(charHairColor);
+        if (charHairStyle == 0) {
             g.fillRect(px + 3, py, W - 6, 4);
             g.fillRect(px + 3, py, 3, 8);
             g.fillRect(px + W - 6, py, 3, 8);
-        } else if (player.hairStyle == 1) {
+        } else if (charHairStyle == 1) {
             g.fillRect(px + 3, py, W - 6, 4);
             g.fillRect(px + 3, py, 3, 14);
             g.fillRect(px + W - 6, py, 3, 14);
         }
-        if (player.armorHelmet != 0) {
-            g.setColor(armorColor(player.armorHelmet));
+        if (charArmorHelmet != 0) {
+            g.setColor(armorColor(charArmorHelmet));
             g.fillRect(px + 2, py - 2, W - 4, 8);
         }
         // глаза
@@ -708,7 +781,7 @@ public class TerrariaMini extends JPanel implements ActionListener, KeyListener,
             new Color(255, 220, 60),  new Color(150, 80, 180),  new Color(30, 30, 30)
         };
         String[] labels = {"Кожа", "Рубашка", "Штаны", "Волосы"};
-        Color[] current = {player.skinColor, player.shirtColor, player.pantsColor, player.hairColor};
+        Color[] current = {charSkinColor, charShirtColor, charPantsColor, charHairColor};
 
         int startY = 260;
         for (int row = 0; row < 4; row++) {
@@ -734,7 +807,7 @@ public class TerrariaMini extends JPanel implements ActionListener, KeyListener,
         String[] hairStyles = {"Короткие", "Длинные", "Лысый"};
         for (int i = 0; i < 3; i++) {
             int cx = 220 + i * 150, cy = startY + 4 * 70;
-            boolean sel = player.hairStyle == i;
+            boolean sel = charHairStyle == i;
             drawPixelButton(g, hairStyles[i], cx, cy, 140, 40,
                 mouseX > cx && mouseX < cx + 140 && mouseY > cy && mouseY < cy + 40);
             if (sel) {
@@ -1684,7 +1757,6 @@ public class TerrariaMini extends JPanel implements ActionListener, KeyListener,
             if (Character.isLetterOrDigit(ch) || ch == '.' || ch == ':') if (mpAddress.length() < 40) mpAddress += ch;
             return;
         }
-        if (code == KeyEvent.VK_F11) { toggleFullscreen(); return; }
         switch (state) {
             case MENU: if (code == KeyEvent.VK_ESCAPE) System.exit(0); break;
             case WORLD_SELECT:
@@ -1754,7 +1826,8 @@ public class TerrariaMini extends JPanel implements ActionListener, KeyListener,
 
     @Override
     public void mousePressed(MouseEvent e) {
-        mouseX = e.getX(); mouseY = e.getY();
+        updateMouseScaled(e.getX(), e.getY());
+        mouseDown = true;
         boolean isLeft = SwingUtilities.isLeftMouseButton(e);
         boolean isRight = SwingUtilities.isRightMouseButton(e);
         if (isLeft) mouseDown = true;
@@ -1775,8 +1848,8 @@ public class TerrariaMini extends JPanel implements ActionListener, KeyListener,
         if (state == GameState.PLAYING) digProgress = 0;
     }
 
-    @Override public void mouseMoved(MouseEvent e) { mouseX = e.getX(); mouseY = e.getY(); }
-    @Override public void mouseDragged(MouseEvent e) { mouseX = e.getX(); mouseY = e.getY(); }
+    @Override public void mouseMoved(MouseEvent e) { updateMouseScaled(e.getX(), e.getY()); }
+    @Override public void mouseDragged(MouseEvent e) { updateMouseScaled(e.getX(), e.getY()); }
     @Override public void mouseClicked(MouseEvent e) {}
     @Override public void mouseEntered(MouseEvent e) {}
     @Override public void mouseExited(MouseEvent e) {}
@@ -1786,7 +1859,8 @@ public class TerrariaMini extends JPanel implements ActionListener, KeyListener,
         if (state == GameState.CHANGELOG) { changelogScroll += e.getWheelRotation(); return; }
         if (state != GameState.PLAYING) return;
         if (creativePaletteOpen && mode == GameMode.CREATIVE) {
-            int maxScroll = Math.max(0, (CREATIVE_BLOCKS.length + 44) / 9 - 5);
+            int totalRows = (CREATIVE_BLOCKS.length + 8) / 9;
+            int maxScroll = Math.max(0, totalRows - 5);
             creativePaletteScroll = Math.max(0, Math.min(maxScroll, creativePaletteScroll + e.getWheelRotation()));
             return;
         }
@@ -1829,10 +1903,10 @@ public class TerrariaMini extends JPanel implements ActionListener, KeyListener,
                 int cx = 220 + i * 50;
                 if (mouseX > cx && mouseX < cx + 40 && mouseY > ry && mouseY < ry + 40) {
                     switch (row) {
-                        case 0: player.skinColor = palette[i]; break;
-                        case 1: player.shirtColor = palette[i]; break;
-                        case 2: player.pantsColor = palette[i]; break;
-                        case 3: player.hairColor = palette[i]; break;
+                        case 0: charSkinColor  = palette[i]; break;
+                        case 1: charShirtColor = palette[i]; break;
+                        case 2: charPantsColor = palette[i]; break;
+                        case 3: charHairColor  = palette[i]; break;
                     }
                     Sound.play(Sound.CLICK);
                     return;
@@ -1843,7 +1917,7 @@ public class TerrariaMini extends JPanel implements ActionListener, KeyListener,
         for (int i = 0; i < 3; i++) {
             int cx = 220 + i * 150;
             if (mouseX > cx && mouseX < cx + 140 && mouseY > hairY && mouseY < hairY + 40) {
-                player.hairStyle = i;
+                charHairStyle = i;
                 Sound.play(Sound.CLICK);
                 return;
             }
@@ -1876,7 +1950,7 @@ public class TerrariaMini extends JPanel implements ActionListener, KeyListener,
         GameState[][] targets = {
             { GameState.MULTIPLAYER, GameState.WORLD_SELECT },       // Мультиплеер, Датапаки
             { GameState.CHANGELOG,   GameState.ACHIEVEMENTS },       // Что нового, Достижения
-            { GameState.SETTINGS,    null }                          // Подсказка, Выход
+            { GameState.CHARACTER,   null }                          // Персонаж, Выход
         };
 
         int firstRowY = topY + btnH + gapY + 20;
@@ -2891,34 +2965,85 @@ public class TerrariaMini extends JPanel implements ActionListener, KeyListener,
         } catch (Exception ex) { addChatMessage("Ошибка подключения: " + ex.getMessage(), Color.RED); state = GameState.MULTIPLAYER; }
     }
 
+    private void updateMouseScaled(int rawX, int rawY) {
+        int panelW = getWidth();
+        int panelH = getHeight();
+        if (panelW <= 0 || panelH <= 0) { mouseX = rawX; mouseY = rawY; return; }
+        double scale = Math.min(panelW / (double) SCREEN_W, panelH / (double) SCREEN_H);
+        int drawW = (int) (SCREEN_W * scale);
+        int drawH = (int) (SCREEN_H * scale);
+        int drawX = (panelW - drawW) / 2;
+        int drawY = (panelH - drawH) / 2;
+        mouseX = (int) ((rawX - drawX) / scale);
+        mouseY = (int) ((rawY - drawY) / scale);
+    }
+
     private void toggleFullscreen() {
-        try {
-            if (!fullscreen) {
-                windowedBounds = frame.getBounds();
-                frame.dispose();
-                frame.setUndecorated(true);
-                frame.setExtendedState(JFrame.MAXIMIZED_BOTH);
-                frame.setVisible(true);
-                GraphicsConfiguration gc = frame.getGraphicsConfiguration();
-                Rectangle screenBounds = gc.getBounds();
-                frame.setBounds(screenBounds);
-                fullscreen = true;
-            } else {
-                frame.dispose();
-                frame.setUndecorated(false);
-                frame.setExtendedState(JFrame.NORMAL);
-                if (windowedBounds != null) frame.setBounds(windowedBounds);
-                frame.setVisible(true);
+        SwingUtilities.invokeLater(() -> {
+            try {
+                GraphicsDevice device = GraphicsEnvironment
+                        .getLocalGraphicsEnvironment()
+                        .getDefaultScreenDevice();
+
+                if (!fullscreen) {
+                    windowedBounds = frame.getBounds();
+
+                    // 1) если устройство уже в fullscreen — выходим
+                    if (device.getFullScreenWindow() != null) {
+                        device.setFullScreenWindow(null);
+                    }
+
+                    frame.dispose();
+                    frame.setUndecorated(true);
+
+                    // 2) пробуем «настоящий» fullscreen (скрывает таскбар)
+                    if (device.isFullScreenSupported()) {
+                        device.setFullScreenWindow(frame);
+                    } else {
+                        // fallback: просто на весь экран
+                        frame.setExtendedState(JFrame.MAXIMIZED_BOTH);
+                        frame.setBounds(device.getDefaultConfiguration().getBounds());
+                        frame.setVisible(true);
+                    }
+
+                    frame.setVisible(true);
+                    fullscreen = true;
+                } else {
+                    // выход из fullscreen
+                    if (device.getFullScreenWindow() != null) {
+                        device.setFullScreenWindow(null);
+                    }
+                    frame.dispose();
+                    frame.setUndecorated(false);
+                    frame.setExtendedState(JFrame.NORMAL);
+                    if (windowedBounds != null) frame.setBounds(windowedBounds);
+                    frame.setVisible(true);
+                    fullscreen = false;
+                }
+
+                revalidate();
+                repaint();
+                // возвращаем фокус клавиатуре
+                SwingUtilities.invokeLater(() -> {
+                    frame.toFront();
+                    requestFocusInWindow();
+                });
+            } catch (Exception ex) {
+                ex.printStackTrace();
+                // аварийный откат
+                try {
+                    GraphicsDevice device = GraphicsEnvironment
+                            .getLocalGraphicsEnvironment()
+                            .getDefaultScreenDevice();
+                    if (device.getFullScreenWindow() != null) device.setFullScreenWindow(null);
+                    frame.dispose();
+                    frame.setUndecorated(false);
+                    if (windowedBounds != null) frame.setBounds(windowedBounds);
+                    frame.setVisible(true);
+                } catch (Exception ignored) {}
                 fullscreen = false;
             }
-            revalidate();
-            repaint();
-            SwingUtilities.invokeLater(() -> { frame.toFront(); requestFocusInWindow(); });
-        } catch (Exception ex) {
-            ex.printStackTrace();
-            try { frame.dispose(); frame.setUndecorated(false); if (windowedBounds != null) frame.setBounds(windowedBounds); frame.setVisible(true); } catch (Exception ignored) {}
-            fullscreen = false;
-        }
+        });
     }
 
     private void ensureSavesDir() { new File("saves").mkdirs(); }
@@ -3002,6 +3127,11 @@ public class TerrariaMini extends JPanel implements ActionListener, KeyListener,
         int sx = world.getWidth() / 2;
         int sy = world.findSurface(sx);
         player = new Player(sx * TILE, (sy - 3) * TILE);
+        player.skinColor  = charSkinColor;
+        player.shirtColor = charShirtColor;
+        player.pantsColor = charPantsColor;
+        player.hairColor  = charHairColor;
+        player.hairStyle  = charHairStyle;
         player.wasInAir = false;
         player.fallStartY = player.y;
         monsters.clear(); villagers.clear(); floaters.clear(); chatLog.clear(); remotePlayers.clear(); peacefulMobs.clear();
@@ -3037,7 +3167,7 @@ public class TerrariaMini extends JPanel implements ActionListener, KeyListener,
         }
         selectedSlot = 0; inventoryOpen = false; activeContainer = null; containerSlots = null; draggedStack = null;
         gameTime = 0; state = GameState.PLAYING; xp = 0; xpLevel = 0; xpToNext = 20;
-        addChatMessage("Добро пожаловать в TerrariaMini beta 1.3!", Color.YELLOW);
+        addChatMessage("Добро пожаловать в TerrariaMini beta 1.3.1!", Color.YELLOW);
         addChatMessage("T — чат, E — инвентарь+крафт, ПКМ по жителю — торговля, F11 — fullscreen", Color.CYAN);
         world.ensureRuntimeState();
         FuncRegistry.loadFromDatapack(new File("datapacks"));
@@ -3166,7 +3296,7 @@ public class TerrariaMini extends JPanel implements ActionListener, KeyListener,
 
     public static void main(String[] args) {
         SwingUtilities.invokeLater(() -> {
-            JFrame frame = new JFrame("TerrariaMini* beta 1.3");
+            JFrame frame = new JFrame("TerrariaMini* beta 1.3.1");
             TerrariaMini game = new TerrariaMini(frame);
             frame.add(game);
             frame.pack();
@@ -3621,6 +3751,7 @@ public class TerrariaMini extends JPanel implements ActionListener, KeyListener,
 
         /** Помечает регион (и соседние) как активный — там будет тикать песок/жидкость. */
         public void markActive(int x, int y) {
+            if (x < 0 || y < 0 || x >= width || y >= height) return;
             ensureActiveRegions();
             int rx = regionOf(x), ry = regionOf(y);
             for (int dx = -1; dx <= 1; dx++)
@@ -4319,12 +4450,16 @@ public class TerrariaMini extends JPanel implements ActionListener, KeyListener,
         }
 
         public void tick() {
+            ensureActiveRegions();
             // песок — только в активных регионах
             for (long rk : new ArrayList<>(activeRegions)) {
                 int rx = (int) (rk >> 32);
                 int ry = (int) rk;
-                int x0 = rx * REGION, y0 = ry * REGION;
-                int x1 = Math.min(width, x0 + REGION), y1 = Math.min(height, y0 + REGION);
+                int x0 = Math.max(0, rx * REGION);
+                int y0 = Math.max(0, ry * REGION);
+                int x1 = Math.min(width,  (rx * REGION) + REGION);
+                int y1 = Math.min(height, (ry * REGION) + REGION);
+                if (x0 >= x1 || y0 >= y1) continue;
                 for (int x = x0; x < x1; x++)
                     for (int y = y1 - 2; y >= y0; y--)
                         if (tiles[x][y] == SAND && y + 1 < height && tiles[x][y + 1] == AIR) {
@@ -4338,19 +4473,22 @@ public class TerrariaMini extends JPanel implements ActionListener, KeyListener,
                 recalculateLight();
                 needsLightUpdate = false;
             }
-            // «остывание» регионов: если ничего не менялось N тиков — убрать
             ensureActiveRegions();
             activeRegionAge++;
             if (activeRegionAge > 120) { activeRegions.clear(); activeRegionAge = 0; }
         }
+
         private void tickLiquidsActive() {
-            ensureRuntimeState();          // на случай null после десериализации
+            ensureRuntimeState();
             if (liquid == null) liquid = new byte[width][height];
             for (long rk : new ArrayList<>(activeRegions)) {
                 int rx = (int) (rk >> 32);
                 int ry = (int) rk;
-                int x0 = Math.max(0, rx * REGION), y0 = Math.max(0, ry * REGION);
-                int x1 = Math.min(width, x0 + REGION), y1 = Math.min(height, y0 + REGION);
+                int x0 = Math.max(0, rx * REGION);
+                int y0 = Math.max(0, ry * REGION);
+                int x1 = Math.min(width,  (rx * REGION) + REGION);
+                int y1 = Math.min(height, (ry * REGION) + REGION);
+                if (x0 >= x1 || y0 >= y1) continue;
                 for (int y = y1 - 1; y >= y0; y--)
                     for (int x = x0; x < x1; x++)
                         tickLiquidCell(x, y);
