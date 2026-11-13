@@ -1,0 +1,1 @@
+jpackage --type app-image --input . --name TerrariaMini --main-jar TerrariaMini.jar --icon icons/icon.ico --dest exe
